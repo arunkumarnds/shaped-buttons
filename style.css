@@ -1,0 +1,42 @@
+body {
+    background: #f4f4f4;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+  }
+  
+  .container {
+    display: flex;
+    gap: 20px;
+  }
+  
+  .btn {
+    background-color: #3498db;
+    color: white;
+    font-weight: bold;
+    padding: 20px;
+    border: none;
+    transition: transform 0.3s;
+    cursor: pointer;
+  }
+  
+  .btn:hover {
+    transform: scale(1.2);
+  }
+  
+  .circle {
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    padding: 0;
+  }
+  
+  .rounded {
+    border-radius: 15px;
+  }
+  
+  .square {
+    border-radius: 0;
+  }

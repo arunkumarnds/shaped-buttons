@@ -4,124 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fluid Amoeba Demo</title>
-  <style>
-    html, body {
-      margin: 0;
-      height: 100%;
-      overflow: hidden;
-      background: #0e0e15;
-      font-family: Arial, Helvetica, sans-serif;
-    }
-    #scene-container {
-      width: 100%;
-      height: 100%;
-      cursor: pointer;
-    }
-    #hint {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: #ffffffaa;
-      font-size: 1.25rem;
-      pointer-events: none;
-      user-select: none;
-      text-align: center;
-      transition: opacity 0.3s ease;
-    }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="scene-container"></div>
   <div id="hint">Move your mouse over the blob ✨</div>
 
-  <script type="module">
-    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js";
-    import SimplexNoise from "https://cdn.skypack.dev/simplex-noise@4.0.1";
-
-    const container = document.getElementById("scene-container");
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x0e0e15, 6, 16);
-    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
-    camera.position.set(0, 0, 6);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    container.appendChild(renderer.domElement);
-
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
-    scene.add(hemiLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(5, 10, 7);
-    scene.add(dirLight);
-
-    const RADIUS = 2, DETAIL = 5;
-    const baseGeometry = new THREE.IcosahedronGeometry(RADIUS, DETAIL);
-    const blobMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0x4cc9f0,
-      roughness: 0.15,
-      transmission: 0.92,
-      thickness: 0.6,
-      transparent: true,
-      opacity: 0.75,
-      side: THREE.DoubleSide,
-    });
-    const blobMesh = new THREE.Mesh(baseGeometry.clone(), blobMaterial);
-    scene.add(blobMesh);
-
-    const dotsGroup = new THREE.Group();
-    scene.add(dotsGroup);
-    const dotGeo = new THREE.SphereGeometry(0.05, 16, 16);
-    const dotMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25, metalness: 0.15 });
-    const posAttr = baseGeometry.attributes.position;
-    const seen = new Set();
-    for (let i = 0; i < posAttr.count; i++) {
-      const v = new THREE.Vector3().fromBufferAttribute(posAttr, i);
-      const key = `${v.x.toFixed(3)}|${v.y.toFixed(3)}|${v.z.toFixed(3)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const sphere = new THREE.Mesh(dotGeo, dotMat.clone());
-      sphere.position.copy(v);
-      sphere.userData = { origin: v.clone(), exploded: v.clone().multiplyScalar(3) };
-      dotsGroup.add(sphere);
-    }
-
-    const simplex = new SimplexNoise();
-    let explode = false, time = 0;
-    container.addEventListener("mouseenter", () => {
-      explode = true;
-      document.getElementById("hint").style.opacity = 0;
-    });
-    container.addEventListener("mouseleave", () => {
-      explode = false;
-      document.getElementById("hint").style.opacity = 1;
-    });
-    window.addEventListener("resize", () => {
-      camera.aspect = container.clientWidth / container.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(container.clientWidth, container.clientHeight);
-    });
-
-    (function animate() {
-      requestAnimationFrame(animate);
-      time += 0.005;
-      blobMesh.rotation.y += 0.003;
-      dotsGroup.rotation.y += 0.003;
-      const verts = blobMesh.geometry.attributes.position;
-      for (let i = 0; i < verts.count; i++) {
-        const vx = verts.getX(i), vy = verts.getY(i), vz = verts.getZ(i);
-        const noise = simplex.noise4D(vx * 0.25, vy * 0.25, vz * 0.25, time) * 0.25;
-        const v = new THREE.Vector3(vx, vy, vz).normalize().multiplyScalar(RADIUS + noise);
-        verts.setXYZ(i, v.x, v.y, v.z);
-      }
-      verts.needsUpdate = true;
-      blobMesh.geometry.computeVertexNormals();
-      dotsGroup.children.forEach(d => {
-        const target = explode ? d.userData.exploded : d.userData.origin;
-        d.position.lerp(target, 0.05);
-      });
-      renderer.render(scene, camera);
-    })();
-  </script>
+  <!-- load THREE.js and SimplexNoise globals -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+  <!-- your app code -->
+  <script src="script.js"></script>
 </body>
 </html>

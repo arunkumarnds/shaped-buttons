@@ -1,18 +1,155 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fluid Amoeba Demo</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <title>Three.js Space Scene with Nucleus</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #20232a; }
+    canvas { display: block; }
+  </style>
 </head>
 <body>
-  <div id="scene-container"></div>
-  <div id="hint">Move your mouse over the blob ✨</div>
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.module.js';
 
-  <!-- load THREE.js & SimplexNoise as globals -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/simplex-noise.min.js"></script>
-  <script src="script.js"></script>
+    // Scene and camera
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 200);
+    camera.position.set(0, 0, 7);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Starfield background
+    const starCount = 1000;
+    const starGeom = new THREE.BufferGeometry();
+    const starPos = new Float32Array(starCount*3);
+    for(let i=0;i<starCount;i++){
+      const r = 50 + Math.random()*50;
+      const th = Math.random()*2*Math.PI;
+      const ph = Math.acos(2*Math.random()-1);
+      starPos[i*3]   = r*Math.sin(ph)*Math.cos(th);
+      starPos[i*3+1] = r*Math.sin(ph)*Math.sin(th);
+      starPos[i*3+2] = r*Math.cos(ph);
+    }
+    starGeom.setAttribute('position', new THREE.BufferAttribute(starPos,3));
+    const starMat = new THREE.PointsMaterial({ color:0xffffff, size:0.2, transparent:true, opacity:0.6, blending:THREE.AdditiveBlending });
+    const stars = new THREE.Points(starGeom, starMat);
+    scene.add(stars);
+
+    // Lights
+    scene.add(new THREE.AmbientLight(0xffffff,0.5));
+    const pointLight = new THREE.PointLight(0xffffff,1);
+    pointLight.position.set(5,5,5);
+    scene.add(pointLight);
+
+    // Main group
+    const container = new THREE.Group();
+    scene.add(container);
+
+    // Invisible central mesh for hover detection
+    const centerGeom = new THREE.SphereGeometry(1,64,64);
+    const centerMesh = new THREE.Mesh(centerGeom, new THREE.MeshBasicMaterial({visible:false}));
+    container.add(centerMesh);
+
+    // Nucleus (sun-like)
+    const nucleusGeom = new THREE.SphereGeometry(0.2,32,32);
+    const nucleusMat = new THREE.MeshBasicMaterial({ color: 0xffee88, transparent: true, opacity: 0 });
+    const nucleus = new THREE.Mesh(nucleusGeom, nucleusMat);
+    container.add(nucleus);
+
+    // Dot field
+    const dotGeom = new THREE.SphereGeometry(0.03,8,8);
+    const dots=[];
+    for(let i=0;i<1000;i++){
+      const u=Math.random()*2-1;
+      const th=Math.random()*2*Math.PI;
+      const ph=Math.acos(u);
+      const col=new THREE.Color().setHSL(0.6,0.5+Math.random()*0.5,0.4+Math.random()*0.3);
+      const m=new THREE.Mesh(dotGeom,new THREE.MeshStandardMaterial({color:col}));
+      m.userData={theta:th,phi:ph};
+      m.position.set(Math.sin(ph)*Math.cos(th),Math.sin(ph)*Math.sin(th),Math.cos(ph));
+      container.add(m); dots.push(m);
+    }
+
+    // Orbits and planets
+    const orbitParams=[
+      {r:2.2, speed:0.01, spin:0.02, color:0xff6666},
+      {r:3.2, speed:0.007, spin:0.015, color:0x66ff66},
+      {r:4.2, speed:0.004, spin:0.01, color:0x6666ff}
+    ];
+    const ringAxes=[new THREE.Vector3(1,0,0),new THREE.Vector3(0,1,0),new THREE.Vector3(0,0,1)];
+    const orbitData=[];
+    const spriteTex=new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/spark1.png');
+    const maxTrail=2;
+
+    orbitParams.forEach((p,i)=>{
+      const grp=new THREE.Group(); container.add(grp);
+      const ring=new THREE.Mesh(
+        new THREE.RingGeometry(p.r-0.02,p.r+0.02,128),
+        new THREE.MeshStandardMaterial({color:0x3399ff,emissive:0x3399ff,emissiveIntensity:1.2,transparent:true,opacity:0.5,side:THREE.DoubleSide})
+      ); ring.rotation.x=Math.PI/2; grp.add(ring);
+      const piv=new THREE.Group(); grp.add(piv);
+      const planet=new THREE.Mesh(
+        new THREE.SphereGeometry(0.15,16,16),
+        new THREE.MeshStandardMaterial({color:p.color,roughness:0.5,metalness:0.3})
+      ); planet.position.set(p.r,0,0); piv.add(planet);
+      const sprMat=new THREE.SpriteMaterial({map:spriteTex,color:p.color,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false});
+      orbitData.push({grp,axis:ringAxes[i%3],ringSpeed:0.003+Math.random()*0.004,piv,planet,orbitSpeed:p.speed,spinSpeed:p.spin,sprMat,parts:[]});
+    });
+
+    // Deformer settings
+    const amp=0.2,fPhi=3,fTh=5;
+    let expand=0,expSp=0.05,margin=0.5;
+    const ray=new THREE.Raycaster(),mouse2=new THREE.Vector2();
+    window.addEventListener('mousemove',e=>{mouse2.x=(e.clientX/window.innerWidth)*2-1;mouse2.y=-(e.clientY/window.innerHeight)*2+1;});
+    const tiltAxis=new THREE.Vector3(Math.sin(THREE.MathUtils.degToRad(5)),Math.cos(THREE.MathUtils.degToRad(5)),0).normalize();
+
+    function animate(){
+      requestAnimationFrame(animate);
+      const now=performance.now()*0.001;
+      // twinkle
+      starMat.opacity=0.4+0.3*Math.sin(now*0.5);
+      // tilt
+      container.rotateOnAxis(tiltAxis,0.002);
+      // hover expand
+      ray.setFromCamera(mouse2,camera);
+      const hit=ray.intersectObject(centerMesh).length>0;
+      expand=hit?Math.min(1,expand+expSp):Math.max(0,expand-expSp);
+      // nucleus
+      nucleusMat.opacity=expand;
+      nucleus.scale.setScalar(0.2+0.3*expand);
+      // maxDist
+      const cz=camera.position.z,vFOV=THREE.MathUtils.degToRad(camera.fov);
+      const vH=2*Math.tan(vFOV/2)*cz,vW=vH*camera.aspect;
+      const mD=Math.max(0,Math.min(vH,vW)/2 - (1+amp) - margin);
+      // dots
+      dots.forEach(d=>{
+        const {theta:th,phi:ph}=d.userData;
+        const w=Math.sin(fPhi*ph+now)*Math.cos(fTh*th+now);
+        const r0=1+amp*w;
+        const b=new THREE.Vector3(Math.sin(ph)*Math.cos(th)*r0,Math.sin(ph)*Math.sin(th)*r0,Math.cos(ph)*r0);
+        const e=b.clone().multiplyScalar((r0+mD)/r0);
+        d.position.lerpVectors(b,e,expand);
+      });
+      // orbits
+      orbitData.forEach(o=>{
+        o.grp.rotateOnAxis(o.axis,o.ringSpeed);
+        o.piv.rotation.y+=o.orbitSpeed;
+        o.planet.rotateY(o.spinSpeed);
+        const sp=new THREE.Sprite(o.sprMat.clone());
+        sp.position.copy(o.planet.getWorldPosition(new THREE.Vector3()));
+        sp.scale.set(0.2,0.2,0.2);
+        sp.userData={birth:now};
+        scene.add(sp);o.parts.push(sp);
+        for(let i=o.parts.length-1;i>=0;i--){const p=o.parts[i],age=now-p.userData.birth;
+          if(age>maxTrail)scene.remove(p),o.parts.splice(i,1);
+          else{const t=age/maxTrail;p.material.opacity=1-t;p.scale.setScalar(0.2*(1-t));}}
+      });
+      renderer.render(scene,camera);
+    }
+    animate();
+    window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});
+  </script>
 </body>
 </html>
